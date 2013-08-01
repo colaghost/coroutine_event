@@ -24,12 +24,15 @@ struct Task
   uchar *stk;
   uint stksize;
   int active;
+  int exit_code;
 
   void (*startfn)(Task*, void*);
   void *startarg;
 };
 
 int task_create(void (*fn)(Task*, void*), void *arg, uint stack);
+Task* task_create_noblock(void (*fn)(Task*, void*), void *arg, uint stack);
+void task_schedule(Task *t);
 void task_free(Task *t);
 void task_yield(Task *t);
 void task_resume(Task *t);

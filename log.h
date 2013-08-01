@@ -1,5 +1,6 @@
 #ifndef _LOG_H_
 #define _LOG_H_
+#include <stdio.h>
 
 #define dlog_info(args...) fprintf(stdout, args)
 #define dlog_debug(args...) fprintf(stdout, args)

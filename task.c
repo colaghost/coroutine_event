@@ -63,20 +63,9 @@ static Task* task_alloc(void (*fn)(Task*, void*), void *arg, uint stack)
   return t;
 }
 
-static void task_schedule(/*int fd, short event, void *arg*/Task *t)
+void task_schedule(Task *t)
 {
-  /*
-  char buf;
-  Task *t;
-  */
-
   dlog_debug("%s\n", __func__);
-  /*
-  read(fd, (void*)&buf, 1);
-  t = (Task*)arg;
-  if (!t)
-    return;
-  */
   task_resume(t);
   if (!t->active)
     task_free(t);
@@ -89,28 +78,26 @@ void task_exit(Task *t)
   task_yield(t);
 }
 
-int task_create(/*event_base *ev_base, */void (*fn)(Task*, void*), void *arg, uint stack)
+int task_create(void (*fn)(Task*, void*), void *arg, uint stack)
 {
   Task *t;
   t = task_alloc(fn, arg, stack);
 
-  /*
-  if (pipe(t->pipe_fd) < 0)
-  {
-    task_free(t);
-    return -1;
-  }
-
-  event_set(&t->ev, t->pipe_fd[0], EV_READ, task_schedule, (void*)t);
-  event_base_set(ev_base, &t->ev);
-  event_add(&t->ev, NULL);
-  write(t->pipe_fd[1], "c", 1);
-  */
-
   t->active = 1;
+  t->exit_code = 0;
   task_schedule(t);
 
   return 0;
+}
+
+Task* task_create_noblock(void (*fn)(Task*, void*), void *arg, uint stack)
+{
+  Task *t;
+  t = task_alloc(fn, arg, stack);
+
+  t->active = 1;
+  t->exit_code = 0;
+  return t;
 }
 
 void task_yield(Task *t)
@@ -143,14 +130,6 @@ void task_free(Task *t)
 {
   dlog_debug("%s\n", __func__);
   assert(t);
-  /*
-  if (t->pipe_fd[0] > 0)
-    close(t->pipe_fd[0]);
-  if (t->pipe_fd[1] > 0)
-    close(t->pipe_fd[1]);
-
-  event_del(&t->ev);
-  */
 
   free(t);
 }

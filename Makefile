@@ -1,18 +1,17 @@
-DKLIB=$(HOME)/local/libevent/lib/libevent.a
+DKLIB=$(HOME)/local/lib/libevent.a
 
 CFLAGS=-g -Wall -I$(HOME)/local/include
 
 LDFLAGS=-lpthread -lrt 
 
-OBJS=main.o task.o
+OBJS=main.o task.o iomap.o coroutine_event.o
 
 EXE=main
 
 all:$(OBJS)
-	@cd ./donkey_server && make 
 	gcc -o $(EXE) $(OBJS) $(DKLIB) $(LDFLAGS)
 
-SOURCES=main.c task.c
+SOURCES=main.c task.c iomap.c coroutine_event.c
 
 DEPS=.depend
 
