@@ -23,7 +23,7 @@ static void request_handler(coroutine_scheduler_t *scheduler, int fd)
       close(fd);
       return;
     }
-    write(fd, buf, read_count);
+    coroutine_write(fd, (void*)buf, read_count, scheduler);
   }
 }
 

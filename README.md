@@ -7,8 +7,8 @@ coroutine_event
 
 将IO对象进行改造以能和协程进行配合。在某种意义上，协程与线程的关系类似于线程与进程的关系，你可以将协程理解成用户态线程。目前的IO操作都可能会导致整个线程的挂起，但是我们只希望挂起当前执行的协程，因此需要将IO对象进行改造，让其只会导致挂起当前的协程，而不是整个线程，这里的改造称为“green化”，这个名字来自于python下的一个协程库--greenlet。目前提供的green化的io对象包括：  
 
-* tcp socket(仅支持读事件)
-* file descriptor(仅支持读事件)
+* tcp socket
+* file descriptor
 * timer(定时器，待支持)
 * signal(信号，待支持)
 

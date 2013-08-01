@@ -70,9 +70,13 @@ ssize_t coroutine_read(int fd,
  * @param fd
  * @param buf
  * @param count
+ * @param scheduler
  *
- * @return 
+ * @return > 0 the bytes of data that write <= 0 error
  */
-ssize_t coroutine_write(int fd, const void *buf, size_t count);
+ssize_t coroutine_write(int fd, 
+                        const void *buf, 
+                        size_t count, 
+                        coroutine_scheduler_t *scheduler);
 
 #endif

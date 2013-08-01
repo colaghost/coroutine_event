@@ -152,3 +152,45 @@ ssize_t coroutine_read(int fd, void *buf, size_t count, coroutine_scheduler_t *s
   }
   return rd_count;
 }
+
+ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_scheduler_t *scheduler)
+{
+  ssize_t left_bytes = count;
+  ssize_t write_bytes = 0;
+  struct event ev;
+  char first_write_flag = 1;
+  const char *p;
+  p = (const char*)buf;
+  while (left_bytes > 0)
+  {
+    write_bytes = write(fd, p, left_bytes);
+    if (write_bytes <= 0)
+    {
+      if (errno == EAGAIN || errno == EWOULDBLOCK)
+      {
+        if (first_write_flag)
+        {
+          first_write_flag = 0;
+          event_set(&ev, fd, EV_WRITE | EV_PERSIST, coroutine_task_schedule, (void*)scheduler->task);
+          event_add(&ev, NULL);
+        }
+        dlog_debug("fd:%d sock buffer is full, task yield\n", fd);
+        task_yield(scheduler->task);
+      }
+      else
+      {
+        break;
+      }
+    }
+    left_bytes -= write_bytes;
+    p += write_bytes;
+  }
+
+  /* cleaner */
+  if (!first_write_flag)
+  {
+    event_del(&ev);
+  }
+
+  return left_bytes <= 0 ? count : write_bytes;
+}
