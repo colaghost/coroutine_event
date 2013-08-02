@@ -2,7 +2,7 @@
  * @file coroutine_event.c
  * @brief 
  * @author colaghost
- * @version 0.0.1
+ * @version 1.0.0
  * @date 2013-07-31
  */
 #include "coroutine_event.h"

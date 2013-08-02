@@ -2,7 +2,7 @@
  * @file channel_internal.h
  * @brief 
  * @author colaghost
- * @version 0.0.1
+ * @version 1.0.0
  * @date 2013-08-02
  */
 
