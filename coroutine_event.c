@@ -25,6 +25,7 @@ static void coroutine_set(coroutine_t *ct,
                           struct coroutine_base *base,
                           struct Task *task);
 static void coroutine_task_schedule(int fd, short event, void *arg);
+static void coroutine_spawn_handler(Task *task, void *arg);
 
 struct coroutine_base* coroutine_base_new(struct event_base *ev_base)
 {
@@ -36,22 +37,6 @@ struct coroutine_base* coroutine_base_new(struct event_base *ev_base)
     iomap_coroutine_init_map(&(base->io_map));
   }
   return base;
-}
-
-void coroutine_spawn_handler(Task *task, void *arg)
-{
-  struct coroutine_req *req = (struct coroutine_req*)arg;
-  req->ct->task = task;
-  if (req == NULL)
-    return;
-  req->handler(req->ct, req->fd);
-
-  /* cleaner */
-  coroutine_ungreen(req->ct, req->fd);
-  close(req->fd);
-  //iomap_coroutine_clear(&(req->ct->io_map));
-  free(req->ct);
-  free(req);
 }
 
 int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *base)
@@ -67,10 +52,6 @@ int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *ba
   if (ct == NULL)
     return -1;
 
-  //coroutine_set(ct, base, NULL);
-  //ct->task = NULL;
-  //iomap_coroutine_init_map(&(ct->io_map));
-
   do 
   {
     req = (struct coroutine_req*)malloc(sizeof(struct coroutine_req));
@@ -85,7 +66,6 @@ int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *ba
     if (task == NULL)
       break;
 
-    //ct->task = task;
     coroutine_set(ct, base, task);
 
     if (coroutine_green(ct, fd))
@@ -188,6 +168,7 @@ ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
         }
         dlog_debug("fd:%d sock buffer is full, task yield\n", fd);
         task_yield(ct->task);
+        continue;
       }
       else
       {
@@ -222,4 +203,19 @@ static void coroutine_task_schedule(int fd, short event, void *arg)
   task_resume(task);
   if (!task->active)
     task_free(task);
+}
+
+static void coroutine_spawn_handler(Task *task, void *arg)
+{
+  struct coroutine_req *req = (struct coroutine_req*)arg;
+  req->ct->task = task;
+  if (req == NULL)
+    return;
+  req->handler(req->ct, req->fd);
+
+  /* cleaner */
+  coroutine_ungreen(req->ct, req->fd);
+  close(req->fd);
+  free(req->ct);
+  free(req);
 }
