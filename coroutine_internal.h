@@ -18,8 +18,11 @@ struct coroutine_io_map
   int nentries;
 };
 
+struct event_base;
+
 struct coroutine_base
 {
+  struct event_base *ev_base;
   struct coroutine_io_map io_map;
 };
 

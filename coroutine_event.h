@@ -14,6 +14,7 @@
 #include "task.h"
 
 struct coroutine_base;
+struct event_base;
 
 typedef struct coroutine
 {
@@ -23,7 +24,7 @@ typedef struct coroutine
 
 typedef void (*coroutine_handler)(coroutine_t*, int);
 
-struct coroutine_base* coroutine_base_new();
+struct coroutine_base* coroutine_base_new(struct event_base *ev_base);
 
 /**
  * @brief create a coroutine task, the handler will be run before return

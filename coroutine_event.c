@@ -26,12 +26,13 @@ static void coroutine_set(coroutine_t *ct,
                           struct Task *task);
 static void coroutine_task_schedule(int fd, short event, void *arg);
 
-struct coroutine_base* coroutine_base_new()
+struct coroutine_base* coroutine_base_new(struct event_base *ev_base)
 {
   struct coroutine_base *base;
   base = (struct coroutine_base*)malloc(sizeof(struct coroutine_base));
   if (base)
   {
+    base->ev_base = ev_base;
     iomap_coroutine_init_map(&(base->io_map));
   }
   return base;
@@ -113,7 +114,7 @@ int coroutine_green(coroutine_t *ct, int fd)
     if (ev == NULL)
       break;
     event_set(ev, fd, EV_READ | EV_PERSIST, coroutine_task_schedule, (void*)ct->task);
-    event_base_set(event_get_base(ev), ev);
+    event_base_set(ct->base->ev_base, ev);
     event_add(ev, NULL);
     if (iomap_fd_add(&(ct->base->io_map), fd, (void*)ev))
       break;
@@ -182,6 +183,7 @@ ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
         {
           first_write_flag = 0;
           event_set(&ev, fd, EV_WRITE | EV_PERSIST, coroutine_task_schedule, (void*)ct->task);
+          event_base_set(ct->base->ev_base, &ev);
           event_add(&ev, NULL);
         }
         dlog_debug("fd:%d sock buffer is full, task yield\n", fd);

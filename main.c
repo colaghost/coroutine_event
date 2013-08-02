@@ -11,6 +11,7 @@ static void handle_accept(int sock, short event, void *arg);
 static void signal_int(int signum);
 
 static int sock = 0;
+struct event_base *ev_base;
 
 int main()
 {
@@ -18,6 +19,7 @@ int main()
   int flags;
   struct event ev;
   int reused;
+  struct coroutine_base *base;
 
   signal(SIGINT, signal_int);
 
@@ -37,19 +39,18 @@ int main()
   }
   listen(sock, 4);
 
-  struct coroutine_base *base = coroutine_base_new();
+  ev_base = event_base_new();
+  base = coroutine_base_new(ev_base);
   if (base == NULL)
   {
     perror("alloc coroutine_base  failed");
     return -1;
   }
-
-  event_init();
   event_set(&ev, sock, EV_READ | EV_PERSIST, handle_accept, (void*)base);
-  event_base_set(event_get_base(&ev), &ev);
+  event_base_set(ev_base, &ev);
   event_add(&ev, NULL);
 
-  event_dispatch();
+  event_base_loop(ev_base, 0);
 
   event_del(&ev);
   close(sock);
@@ -97,6 +98,5 @@ static void signal_int(int signum)
 {
   if (sock > 0)
     close(sock);
-  sock = 0;
-  event_loopbreak();
+  event_base_loopbreak(ev_base);
 }
