@@ -1,3 +1,10 @@
+/**
+ * @file channel.c
+ * @brief 
+ * @author colaghost
+ * @version 1.0.0
+ * @date 2013-08-02
+ */
 #ifndef _TASK_H_
 #define _TASK_H_
 #include <stdio.h>

@@ -1,3 +1,10 @@
+/**
+ * @file channel.c
+ * @brief 
+ * @author colaghost
+ * @version 1.0.0
+ * @date 2013-08-02
+ */
 #include <signal.h>
 #include <assert.h>
 #include <string.h>
