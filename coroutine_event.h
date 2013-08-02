@@ -12,71 +12,75 @@
 #include <unistd.h>
 
 #include "task.h"
-#include "coroutine_internal.h"
 
-typedef struct coroutine_scheduler
+struct coroutine_base;
+
+typedef struct coroutine
 {
+  struct coroutine_base *base;
   struct Task *task;
-  struct coroutine_io_map io_map;
-}coroutine_scheduler_t;
+}coroutine_t;
 
-typedef void (*coroutine_handler)(coroutine_scheduler_t*, int);
+typedef void (*coroutine_handler)(coroutine_t*, int);
+
+struct coroutine_base* coroutine_base_new();
 
 /**
  * @brief create a coroutine task, the handler will be run before return
  *
  * @param fd
  * @param handler
+ * @param base
  *
  * @return -1 failed 0 success
  */
-int coroutine_spawn(int fd, coroutine_handler handler);
+int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *base);
 
 /**
  * @brief green an fd
  *
- * @param scheduler
+ * @param ct
  * @param fd file descriptor
  *
  * @return 0 success -1 failed
  */
-int coroutine_green(coroutine_scheduler_t *scheduler, int fd);
+int coroutine_green(coroutine_t *ct, int fd);
 /**
  * @brief ungreen an fd
  *
- * @param scheduler
+ * @param ct
  * @param fd file descriptor
  *
  * @return 0 success -1 failed
  */
-int coroutine_ungreen(coroutine_scheduler_t *scheduler, int fd);
+int coroutine_ungreen(coroutine_t *ct, int fd);
 /**
  * @brief use to read a file descriptor for data, it looks like sync,but actually it is async in low level.
  *
  * @param fd file descriptor that want to read
  * @param buf the buffer to save data
  * @param count the number of bytes of data to read
- * @param scheduler
+ * @param ct
  *
  * @return > 0 the count of data read < 0 error == 0 fd close
  */
 ssize_t coroutine_read(int fd, 
                        void *buf, 
                        size_t count, 
-                       coroutine_scheduler_t * scheduler);
+                       coroutine_t * ct);
 /**
  * @brief write data to a file descriptor
  *
  * @param fd
  * @param buf
  * @param count
- * @param scheduler
+ * @param ct
  *
  * @return > 0 the bytes of data that write <= 0 error
  */
 ssize_t coroutine_write(int fd, 
                         const void *buf, 
                         size_t count, 
-                        coroutine_scheduler_t *scheduler);
+                        coroutine_t *ct);
 
 #endif

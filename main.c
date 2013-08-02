@@ -4,49 +4,22 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
-static void request_handler(coroutine_scheduler_t *scheduler, int fd)
-{
-  char buf[128];
-  ssize_t read_count;
-  int flags;
+static void request_handler(coroutine_t *ct, int fd);
+static void handle_accept(int sock, short event, void *arg);
+static void signal_int(int signum);
 
-  flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-  while (1)
-  {
-    read_count = coroutine_read(fd, (void*)buf, sizeof(buf) - 1, scheduler);
-    if (read_count <= 0)
-    {
-      dlog_debug("fd:%d close\n", fd);
-      close(fd);
-      return;
-    }
-    coroutine_write(fd, (void*)buf, read_count, scheduler);
-  }
-}
-
-static void handle_accept(int sock, short event, void *arg)
-{
-  int new_fd;
-  socklen_t addr_len;
-  struct sockaddr_in cli_addr;
-  addr_len = sizeof(cli_addr);
-  new_fd = accept(sock, (struct sockaddr*)&cli_addr, &addr_len);
-  if (new_fd < 0)
-    return;
-  dlog_debug("accept new fd:%d\n", new_fd);
-  coroutine_spawn(new_fd, request_handler);
-}
+static int sock = 0;
 
 int main()
 {
   struct sockaddr_in local_addr;
-  int sock;
   int flags;
   struct event ev;
   int reused;
+
+  signal(SIGINT, signal_int);
 
   sock = socket(AF_INET, SOCK_STREAM, 0);
   memset(&local_addr, 0, sizeof(local_addr));
@@ -64,8 +37,15 @@ int main()
   }
   listen(sock, 4);
 
+  struct coroutine_base *base = coroutine_base_new();
+  if (base == NULL)
+  {
+    perror("alloc coroutine_base  failed");
+    return -1;
+  }
+
   event_init();
-  event_set(&ev, sock, EV_READ | EV_PERSIST, handle_accept, NULL);
+  event_set(&ev, sock, EV_READ | EV_PERSIST, handle_accept, (void*)base);
   event_base_set(event_get_base(&ev), &ev);
   event_add(&ev, NULL);
 
@@ -74,4 +54,49 @@ int main()
   event_del(&ev);
   close(sock);
   return 0;
+}
+
+static void request_handler(coroutine_t *ct, int fd)
+{
+  char buf[128];
+  ssize_t read_count;
+  int flags;
+
+  flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+  while (1)
+  {
+    read_count = coroutine_read(fd, (void*)buf, sizeof(buf) - 1, ct);
+    if (read_count <= 0)
+    {
+      dlog_debug("fd:%d close\n", fd);
+      close(fd);
+      return;
+    }
+    coroutine_write(fd, (void*)buf, read_count, ct);
+  }
+}
+
+static void handle_accept(int sock, short event, void *arg)
+{
+  int new_fd;
+  socklen_t addr_len;
+  struct sockaddr_in cli_addr;
+  struct coroutine_base *base;
+  addr_len = sizeof(cli_addr);
+  base = (struct coroutine_base*)arg;
+  new_fd = accept(sock, (struct sockaddr*)&cli_addr, &addr_len);
+  if (new_fd < 0)
+    return;
+  dlog_debug("accept new fd:%d\n", new_fd);
+  coroutine_spawn(new_fd, request_handler, base);
+}
+
+static void signal_int(int signum)
+{
+  if (sock > 0)
+    close(sock);
+  sock = 0;
+  event_loopbreak();
 }

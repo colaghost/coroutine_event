@@ -18,6 +18,11 @@ struct coroutine_io_map
   int nentries;
 };
 
+struct coroutine_base
+{
+  struct coroutine_io_map io_map;
+};
+
 /**
  * @brief initialize an coroutine_io_map
  *
