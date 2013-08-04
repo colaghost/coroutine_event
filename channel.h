@@ -10,6 +10,8 @@
 #ifndef CHANNEL_H
 #define CHANNEL_H
 
+typedef struct channel channel_t;
+
 /**
  * @brief create a new channel
  * the memory layout like this:
@@ -25,4 +27,7 @@
  */
 channel_t* channel_create(int elemsize, int bufsize);
 
+int chan_sendul(channel_t *c, unsigned long *val, coroutine_t *ct);
+
+int chan_sendul(channel_t *c, unsigned long *val, coroutine_t *ct);
 #endif  /*CHANNEL_H*/

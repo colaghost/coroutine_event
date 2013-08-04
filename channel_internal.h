@@ -8,6 +8,7 @@
 
 #ifndef CHANNEL_INTERNAL_H
 #define CHANNEL_INTERNAL_H
+#include <event.h>
 
 enum
 {
@@ -22,11 +23,12 @@ struct Task;
 
 typedef struct alt
 {
+  int pipe_fd[2];
+	struct event ev;
   struct channel *c;
   void *val;
   unsigned int op;
-  Task *t;
-  int fd;
+  struct Task *t;
   struct alt *xalt;
 }alt_t;
 
