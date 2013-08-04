@@ -16,11 +16,7 @@
 struct coroutine_base;
 struct event_base;
 
-typedef struct coroutine
-{
-  struct coroutine_base *base;
-  struct Task *task;
-}coroutine_t;
+typedef struct coroutine coroutine_t;
 
 typedef void (*coroutine_handler)(coroutine_t*, int);
 
@@ -35,7 +31,9 @@ struct coroutine_base* coroutine_base_new(struct event_base *ev_base);
  *
  * @return -1 failed 0 success
  */
-int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *base);
+int coroutine_spawn_with_fd(int fd, coroutine_handler handler, struct coroutine_base *base);
+
+int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base);
 
 /**
  * @brief green an fd
@@ -84,4 +82,8 @@ ssize_t coroutine_write(int fd,
                         size_t count, 
                         coroutine_t *ct);
 
+int coroutine_accept(int fd, 
+										 struct sockaddr *cli_addr, 
+										 socklen_t *addr_len, 
+										 coroutine_t *ct);
 #endif

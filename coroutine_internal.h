@@ -26,6 +26,15 @@ struct coroutine_base
   struct coroutine_io_map io_map;
 };
 
+typedef struct coroutine
+{
+  struct coroutine_base *base;
+  struct Task *task;
+	/* identify who make it yield */
+	int yield_fd;
+	short yield_event;
+}coroutine_t;
+
 /**
  * @brief initialize an coroutine_io_map
  *

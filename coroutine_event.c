@@ -39,7 +39,7 @@ struct coroutine_base* coroutine_base_new(struct event_base *ev_base)
   return base;
 }
 
-int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *base)
+int coroutine_spawn_with_fd(int fd, coroutine_handler handler, struct coroutine_base *base)
 {
   coroutine_t *ct = NULL;
   struct coroutine_req *req = NULL;
@@ -83,6 +83,44 @@ int coroutine_spawn(int fd, coroutine_handler handler, struct coroutine_base *ba
   return -1;
 }
 
+int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base)
+{
+  coroutine_t *ct = NULL;
+  struct coroutine_req *req = NULL;
+  Task *task = NULL;
+
+  ct = (coroutine_t*)malloc(sizeof(coroutine_t));
+  if (ct == NULL)
+    return -1;
+
+  do 
+  {
+    req = (struct coroutine_req*)malloc(sizeof(struct coroutine_req));
+    if (req == NULL)
+      break;
+
+    req->ct = ct;
+    req->handler = handler;
+    req->fd = -1;
+
+    task = task_create_noblock(coroutine_spawn_handler, (void*)req, STACK);
+    if (task == NULL)
+      break;
+
+    coroutine_set(ct, base, task);
+
+    task_schedule(task);
+
+    return 0;
+  } while (0);
+
+  if (ct)
+    free(ct);
+  if (req)
+    free(req);
+  return -1;
+}
+
 int coroutine_green(coroutine_t *ct, int fd)
 {
   struct event *ev = NULL;
@@ -93,7 +131,7 @@ int coroutine_green(coroutine_t *ct, int fd)
     ev = (struct event*)malloc(sizeof(struct event));
     if (ev == NULL)
       break;
-    event_set(ev, fd, EV_READ | EV_PERSIST, coroutine_task_schedule, (void*)ct->task);
+    event_set(ev, fd, EV_READ | EV_PERSIST, coroutine_task_schedule, (void*)ct/*->task*/);
     event_base_set(ct->base->ev_base, ev);
     event_add(ev, NULL);
     if (iomap_fd_add(&(ct->base->io_map), fd, (void*)ev))
@@ -135,6 +173,8 @@ ssize_t coroutine_read(int fd, void *buf, size_t count, coroutine_t *ct)
       else if (errno == EAGAIN || errno == EWOULDBLOCK)
       {
         dlog_debug("fd:%d has not data to read, task yield\n", fd);
+				ct->yield_fd = fd;
+				ct->yield_event = EV_READ;
         task_yield(ct->task);
       }
       else
@@ -142,6 +182,32 @@ ssize_t coroutine_read(int fd, void *buf, size_t count, coroutine_t *ct)
     }
   }
   return read_bytes;
+}
+
+int coroutine_accept(int fd, struct sockaddr *cli_addr, socklen_t *addr_len, coroutine_t *ct)
+{
+	int new_fd;
+  while (1)
+  {
+		new_fd = accept(fd, cli_addr, addr_len);
+    if (new_fd > 0)
+      break;
+    else
+    {
+      if (errno == EINTR) 
+        continue;
+      else if (errno == EAGAIN || errno == EWOULDBLOCK)
+      {
+        dlog_debug("fd:%d has not new conn, task yield\n", fd);
+				ct->yield_fd = fd;
+				ct->yield_event = EV_READ;
+        task_yield(ct->task);
+      }
+      else
+        break;
+    }
+  }
+  return new_fd;
 }
 
 ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
@@ -162,11 +228,13 @@ ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
         if (first_write_flag)
         {
           first_write_flag = 0;
-          event_set(&ev, fd, EV_WRITE | EV_PERSIST, coroutine_task_schedule, (void*)ct->task);
+          event_set(&ev, fd, EV_WRITE | EV_PERSIST, coroutine_task_schedule, (void*)ct/*->task*/);
           event_base_set(ct->base->ev_base, &ev);
           event_add(&ev, NULL);
         }
         dlog_debug("fd:%d sock buffer is full, task yield\n", fd);
+				ct->yield_fd = fd;
+				ct->yield_event = EV_WRITE;
         task_yield(ct->task);
         continue;
       }
@@ -198,11 +266,19 @@ static void coroutine_set(coroutine_t *ct,
 
 static void coroutine_task_schedule(int fd, short event, void *arg)
 {
+	/*
   Task *task;
   task = (Task*)arg;
-  task_resume(task);
-  if (!task->active)
-    task_free(task);
+	*/
+	coroutine_t *c;
+	c = (coroutine_t*)arg;
+	dlog_debug("%d:%hd:%d:%hd\n", fd, event, c->yield_fd, c->yield_event);
+	if (c->yield_fd == fd && (c->yield_event & event))
+	{
+		task_resume(c->task);
+		if (!c->task->active)
+			task_free(c->task);
+	}
 }
 
 static void coroutine_spawn_handler(Task *task, void *arg)
@@ -214,8 +290,11 @@ static void coroutine_spawn_handler(Task *task, void *arg)
   req->handler(req->ct, req->fd);
 
   /* cleaner */
-  coroutine_ungreen(req->ct, req->fd);
-  close(req->fd);
+	if (req->fd >= 0)
+	{
+		coroutine_ungreen(req->ct, req->fd);
+		close(req->fd);
+	}
   free(req->ct);
   free(req);
 }
