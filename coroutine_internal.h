@@ -33,6 +33,11 @@ typedef struct coroutine
 	/* identify who make it yield */
 	int yield_fd;
 	short yield_event;
+
+  /* identify the read/write state,
+   * it's useful when call the coroutine_handler 
+   */
+  short current_event;
 }coroutine_t;
 
 /**
