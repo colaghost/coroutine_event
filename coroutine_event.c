@@ -19,12 +19,14 @@ struct coroutine_req
   coroutine_t *ct;
   coroutine_handler handler;
   int fd;
+  void *arg;
 };
 
 static void coroutine_set(coroutine_t *ct,
                           struct coroutine_base *base,
                           struct Task *task);
-static void coroutine_task_schedule(int fd, short event, void *arg);
+static void coroutine_task_read_schedule(int fd, short event, void *arg);
+static void coroutine_task_write_schedule(int fd, short event, void *arg);
 static void coroutine_spawn_handler(Task *task, void *arg);
 
 struct coroutine_base* coroutine_base_new(struct event_base *ev_base)
@@ -39,7 +41,7 @@ struct coroutine_base* coroutine_base_new(struct event_base *ev_base)
   return base;
 }
 
-int coroutine_spawn_with_fd(int fd, coroutine_handler handler, struct coroutine_base *base)
+int coroutine_spawn_with_fd(int fd, int timeout, coroutine_handler handler, struct coroutine_base *base, void *arg)
 {
   coroutine_t *ct = NULL;
   struct coroutine_req *req = NULL;
@@ -61,6 +63,7 @@ int coroutine_spawn_with_fd(int fd, coroutine_handler handler, struct coroutine_
     req->ct = ct;
     req->handler = handler;
     req->fd = fd;
+    req->arg = arg;
 
     task = task_create_noblock(coroutine_spawn_handler, (void*)req, STACK);
     if (task == NULL)
@@ -68,7 +71,7 @@ int coroutine_spawn_with_fd(int fd, coroutine_handler handler, struct coroutine_
 
     coroutine_set(ct, base, task);
 
-    if (coroutine_green(ct, fd))
+    if (coroutine_green(ct, fd, timeout))
       break;
 
     task_schedule(task);
@@ -83,7 +86,7 @@ int coroutine_spawn_with_fd(int fd, coroutine_handler handler, struct coroutine_
   return -1;
 }
 
-int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base)
+int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base, void *arg)
 {
   coroutine_t *ct = NULL;
   struct coroutine_req *req = NULL;
@@ -102,6 +105,7 @@ int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base)
     req->ct = ct;
     req->handler = handler;
     req->fd = -1;
+    req->arg = arg;
 
     task = task_create_noblock(coroutine_spawn_handler, (void*)req, STACK);
     if (task == NULL)
@@ -121,9 +125,10 @@ int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base)
   return -1;
 }
 
-int coroutine_green(coroutine_t *ct, int fd)
+int coroutine_green(coroutine_t *ct, int fd, int timeout)
 {
   struct event *ev = NULL;
+  struct timeval tv = {0, 0};
   if (fd < 0)
     return -1;
   do
@@ -131,9 +136,16 @@ int coroutine_green(coroutine_t *ct, int fd)
     ev = (struct event*)malloc(sizeof(struct event));
     if (ev == NULL)
       break;
-    event_set(ev, fd, EV_READ | EV_PERSIST, coroutine_task_schedule, (void*)ct/*->task*/);
+    event_set(ev, fd, EV_READ | EV_PERSIST, coroutine_task_read_schedule, (void*)ct);
     event_base_set(ct->base->ev_base, ev);
-    event_add(ev, NULL);
+    if (timeout > 0)
+    {
+      dlog_debug("set timeout:%d\n", timeout);
+      tv.tv_sec = timeout;
+      event_add(ev, &tv);
+    }
+    else
+      event_add(ev, NULL);
     if (iomap_fd_add(&(ct->base->io_map), fd, (void*)ev))
       break;
     return 0;
@@ -176,6 +188,11 @@ ssize_t coroutine_read(int fd, void *buf, size_t count, coroutine_t *ct)
 				ct->yield_fd = fd;
 				ct->yield_event = EV_READ;
         task_yield(ct->task);
+        if (ct->current_event & EV_TIMEOUT)
+        {
+          errno = ETIMEDOUT;
+          break;
+        }
       }
       else
         break;
@@ -202,6 +219,11 @@ int coroutine_accept(int fd, struct sockaddr *cli_addr, socklen_t *addr_len, cor
 				ct->yield_fd = fd;
 				ct->yield_event = EV_READ;
         task_yield(ct->task);
+        if (ct->current_event & EV_TIMEOUT)
+        {
+          errno = ETIMEDOUT;
+          break;
+        }
       }
       else
         break;
@@ -228,7 +250,7 @@ ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
         if (first_write_flag)
         {
           first_write_flag = 0;
-          event_set(&ev, fd, EV_WRITE | EV_PERSIST, coroutine_task_schedule, (void*)ct/*->task*/);
+          event_set(&ev, fd, EV_WRITE | EV_PERSIST, coroutine_task_write_schedule, (void*)ct);
           event_base_set(ct->base->ev_base, &ev);
           event_add(&ev, NULL);
         }
@@ -236,12 +258,17 @@ ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
 				ct->yield_fd = fd;
 				ct->yield_event = EV_WRITE;
         task_yield(ct->task);
+        if (ct->current_event & EV_TIMEOUT)
+        {
+          errno = ETIMEDOUT;
+          break;
+        }
         continue;
       }
+      else if (errno == EINTR)
+        continue;
       else
-      {
         break;
-      }
     }
     left_bytes -= write_bytes;
     p += write_bytes;
@@ -256,6 +283,42 @@ ssize_t coroutine_write(int fd, const void *buf, size_t count, coroutine_t *ct)
   return left_bytes <= 0 ? count : write_bytes;
 }
 
+int coroutine_connect(int fd, const struct sockaddr *addr, socklen_t addr_len, coroutine_t *ct)
+{
+  struct timeval tv;
+  struct event ev;
+  int error;
+  socklen_t error_len = sizeof(error);
+
+  if (connect(fd, addr, addr_len) == -1)
+  {
+    if (errno != EINPROGRESS)
+      return -1;
+
+    tv.tv_sec = 5;
+    event_set(&ev, fd, EV_WRITE, coroutine_task_write_schedule, (void*)ct);
+    event_base_set(ct->base->ev_base, &ev);
+    event_add(&ev, &tv);
+
+    dlog_debug("fd:%d connect in process, task yield\n", fd);
+    ct->yield_fd = fd;
+    ct->yield_event = EV_WRITE;
+    task_yield(ct->task);
+    event_del(&ev);
+    if (ct->current_event & EV_TIMEOUT)
+    {
+      errno = ETIMEDOUT;
+    }
+    else if (ct->current_event & EV_WRITE)
+    {
+      if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_len) == 0 &&
+          error == 0)
+        return 0;
+    }
+  }
+  return -1;
+}
+
 static void coroutine_set(coroutine_t *ct,
                           struct coroutine_base *base,
                           struct Task *task)
@@ -264,21 +327,29 @@ static void coroutine_set(coroutine_t *ct,
   ct->task = task;
 }
 
-static void coroutine_task_schedule(int fd, short event, void *arg)
+#define TASK_SCHEDULE(EVENT) \
+  coroutine_t *c; \
+  do  \
+  { \
+    c = (coroutine_t*)arg;  \
+	  if (c->yield_fd == fd && (c->yield_event & (EVENT)))  \
+	  { \
+      c->current_event = event; \
+	  	task_resume(c->task); \
+	  	if (!c->task->active) \
+	  		task_free(c->task); \
+	  } \
+  } while (0)
+    
+
+static void coroutine_task_read_schedule(int fd, short event, void *arg)
 {
-	/*
-  Task *task;
-  task = (Task*)arg;
-	*/
-	coroutine_t *c;
-	c = (coroutine_t*)arg;
-	dlog_debug("%d:%hd:%d:%hd\n", fd, event, c->yield_fd, c->yield_event);
-	if (c->yield_fd == fd && (c->yield_event & event))
-	{
-		task_resume(c->task);
-		if (!c->task->active)
-			task_free(c->task);
-	}
+  TASK_SCHEDULE(EV_READ);
+}
+
+static void coroutine_task_write_schedule(int fd, short event, void *arg)
+{
+  TASK_SCHEDULE(EV_WRITE);
 }
 
 static void coroutine_spawn_handler(Task *task, void *arg)
@@ -287,7 +358,7 @@ static void coroutine_spawn_handler(Task *task, void *arg)
   req->ct->task = task;
   if (req == NULL)
     return;
-  req->handler(req->ct, req->fd);
+  req->handler(req->ct, req->fd, req->arg);
 
   /* cleaner */
 	if (req->fd >= 0)
