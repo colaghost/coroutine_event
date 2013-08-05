@@ -8,6 +8,7 @@
 
 #ifndef _COROUTINE_INTERNAL_H_
 #define _COROUTINE_INTERNAL_H_
+#include "coroutine_event.h"
 
 /**
  * @brief used to map fd to a ptr
@@ -26,7 +27,7 @@ struct coroutine_base
   struct coroutine_io_map io_map;
 };
 
-typedef struct coroutine
+struct coroutine
 {
   struct coroutine_base *base;
   struct Task *task;
@@ -38,7 +39,7 @@ typedef struct coroutine
    * it's useful when call the coroutine_handler 
    */
   short current_event;
-}coroutine_t;
+};
 
 /**
  * @brief initialize an coroutine_io_map

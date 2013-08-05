@@ -17,7 +17,6 @@
 #include "log.h"
 #include "task.h"
 #include "coroutine_internal.h"
-#include "coroutine_event.h"
 
 channel_t* channel_create(int elem_size, int buf_size)
 {
