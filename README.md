@@ -14,8 +14,8 @@ coroutine_event
 
 ##chan：协程间通信
 
-待支持
+每个协程是一个独立的执行单元，为了能够方便协程之前的通信/同步，coroutine_event提供了chan这种机制。它本质上类似于一个阻塞消息队列，但是它不一定FIFO。目前它只能在单个线程里面的多个协程之间通信。
 
 ##多核
 
-待支持
+一般在多个线程里面使用libevent都是通过一个线程一个event_base，即一个线程一个事件循环。coroutine_event通过一个线程配一个coroutine_base来支持多线程，coroutine_spawn[_with_fd]需要绑定到自己线程独有的coroutine_base上去。
