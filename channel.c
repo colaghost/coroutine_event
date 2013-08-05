@@ -275,7 +275,7 @@ static int chan_op(channel_t *c, int op, void *p, coroutine_t *ct, int canblock)
 		return -1;
   flags = fcntl(a[0].pipe_fd[0], F_GETFL, 0);
   fcntl(a[0].pipe_fd[0], F_SETFL, flags | O_NONBLOCK);
-	if (coroutine_green(ct, a[0].pipe_fd[0]))
+	if (coroutine_green(ct, a[0].pipe_fd[0], 0))
 		return -1;
 	a[0].c = c;
 	a[0].op = op;
