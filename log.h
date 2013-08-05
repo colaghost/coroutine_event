@@ -9,6 +9,7 @@
 #define _LOG_H_
 #include <stdio.h>
 
+#define USE_DEBUG
 #define dlog_info(args...) fprintf(stdout, args)
 
 #ifdef USE_DEBUG
