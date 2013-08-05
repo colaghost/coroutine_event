@@ -4,16 +4,17 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "coroutine_event.h"
 #include "log.h"
 #include "channel.h"
 
-static void request_handler(coroutine_t *ct, int fd);
+static void request_handler(coroutine_t *ct, int fd, void *arg);
 static void handle_accept(int sock, short event, void *arg);
-static void accept_handler(coroutine_t *ct, int fd);
+static void accept_handler(coroutine_t *ct, int fd, void *arg);
 static void signal_int(int signum);
-static void process_request(coroutine_t *ct, int);
+static void process_request(coroutine_t *ct, int, void*);
 
 static int sock = 0;
 struct event_base *ev_base;
@@ -54,14 +55,14 @@ int main()
     perror("alloc coroutine_base  failed");
     return -1;
   }
-	/*
   event_set(&ev, sock, EV_READ | EV_PERSIST, handle_accept, (void*)base);
   event_base_set(ev_base, &ev);
   event_add(&ev, NULL);
-	*/
-	coroutine_spawn_with_fd(sock, accept_handler, base);
+  /*
+	coroutine_spawn_with_fd(sock, 0, accept_handler, base, NULL);
 
-	coroutine_spawn(process_request, base);
+	coroutine_spawn(process_request, base, NULL);
+  */
 
   event_base_loop(ev_base, 0);
 
@@ -70,7 +71,7 @@ int main()
   return 0;
 }
 
-static void request_handler(coroutine_t *ct, int fd)
+static void request_handler(coroutine_t *ct, int fd, void *arg)
 {
   char buf[128];
   ssize_t read_count;
@@ -85,6 +86,8 @@ static void request_handler(coroutine_t *ct, int fd)
 		read_count = coroutine_read(fd, (void*)buf, sizeof(buf) - 1, ct);
 		if (read_count <= 0)
     {
+      if (errno == ETIMEDOUT)
+        dlog_debug("fd:%d timedout\n");
       dlog_debug("fd:%d close\n", fd);
       close(fd);
       return;
@@ -93,7 +96,7 @@ static void request_handler(coroutine_t *ct, int fd)
   }
 }
 
-static void accept_handler(coroutine_t *ct, int fd)
+static void accept_handler(coroutine_t *ct, int fd, void *arg)
 {
   int flags;
 	socklen_t addr_len;
@@ -118,7 +121,7 @@ static void accept_handler(coroutine_t *ct, int fd)
 	}
 }
 
-static void process_request(coroutine_t *ct, int fd)
+static void process_request(coroutine_t *ct, int fd, void *arg)
 {
 	unsigned long val;
 	int new_fd;
@@ -127,8 +130,8 @@ static void process_request(coroutine_t *ct, int fd)
 		if (chan_recvul(c, &val, ct) == 0)
 		{
 			new_fd = val;
-			printf("new fd:%d\n", new_fd);
-			coroutine_spawn_with_fd(new_fd, request_handler, base);
+			//printf("new fd:%d\n", new_fd);
+			coroutine_spawn_with_fd(new_fd, 5, request_handler, base, NULL);
 		}
 	}
 }
@@ -145,7 +148,7 @@ static void handle_accept(int sock, short event, void *arg)
   if (new_fd < 0)
     return;
   dlog_debug("accept new fd:%d\n", new_fd);
-  coroutine_spawn_with_fd(new_fd, request_handler, base);
+  coroutine_spawn_with_fd(new_fd, 0, request_handler, base, NULL);
 }
 
 
