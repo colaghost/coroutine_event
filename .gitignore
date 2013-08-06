@@ -2,4 +2,15 @@
 *.o
 *.swp
 .depend
+*.lo
+*.la
+*/.deps/
+*/.libs/
+stamp-h1
+test
+libtool
+Makefile
+config.h
+config.log
+config.status
 main
