@@ -19,3 +19,10 @@ coroutine_event
 ##多核
 
 一般在多个线程里面使用libevent都是通过一个线程一个event_base，即一个线程一个事件循环。coroutine_event通过一个线程配一个coroutine_base来支持多线程，coroutine_spawn[_with_fd]需要绑定到自己线程独有的coroutine_base上去。
+
+##安装
+./configure --prefix=[安装路径] --with-libevent=[libevent安装路径]  
+make && make install
+
+##测试例子
+test目录下有测试源代码
