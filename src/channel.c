@@ -9,9 +9,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#define _GNU_SOURCE
-#include <fcntl.h>
-#include <unistd.h>
 #include <assert.h>
 
 #include "log.h"
@@ -32,6 +29,67 @@ channel_t* channel_create(int elem_size, int buf_size)
     c->buf = (unsigned char*)(c + 1);
   }
   return c;
+}
+
+void channel_free(channel_t *c)
+{
+  if (c != NULL)
+  {
+    if (c->asend.a)
+      free(c->asend.a);
+    if (c->arecv.a)
+      free(c->arecv.a);
+    free(c);
+  }
+}
+
+chan_peer_t* chan_peer_create(channel_t *c, coroutine_t *ct)
+{
+  chan_peer_t *chan_peer = NULL;
+  int *pipe_fd = NULL;
+  do
+  {
+    chan_peer = (chan_peer_t*)malloc(sizeof *chan_peer);
+    if (chan_peer == NULL)
+      break;
+    memset(chan_peer, 0, sizeof *chan_peer);
+    pipe_fd = chan_peer->alt[0].pipe_fd;
+
+    chan_peer->alt[0].c = c;
+    chan_peer->ct = ct;
+
+    if (pipe(pipe_fd))
+      break;
+    coroutine_green(ct, pipe_fd[0], 0);
+
+    return chan_peer;
+  } while (0);
+  if (chan_peer)
+  {
+    if (pipe_fd[0] > 0)
+      close(pipe_fd[0]);
+    if (pipe_fd[1] > 0)
+      close(pipe_fd[1]);
+    free(chan_peer);
+  }
+  return NULL;
+}
+
+void chan_peer_free(chan_peer_t *chan_peer)
+{
+  int *pipe_fd = NULL;
+  if (chan_peer)
+  {
+    pipe_fd = chan_peer->alt[0].pipe_fd;
+    if (pipe_fd[0] > 0)
+    {
+      coroutine_ungreen(chan_peer->ct, pipe_fd[0]);
+      close(pipe_fd[0]);
+    }
+    if (pipe_fd[1] > 0)
+      close(pipe_fd[1]);
+    free(chan_peer);
+  }
 }
 
 static void array_add_item(alt_array_t *arr, alt_t *alt)
@@ -265,34 +323,43 @@ int chan_alt(alt_t *a, coroutine_t *ct)
 	return a[0].xalt - a;
 }
 
-static int chan_op(channel_t *c, int op, void *p, coroutine_t *ct, int canblock)
+static int chan_op(chan_peer_t *chan_peer, int op, void *p, int canblock)
 {
-	int flags;
-	alt_t a[2];
 	int op_result;
-	if (pipe(a[0].pipe_fd))
-		return -1;
-  flags = fcntl(a[0].pipe_fd[0], F_GETFL, 0);
-  fcntl(a[0].pipe_fd[0], F_SETFL, flags | O_NONBLOCK);
-	if (coroutine_green(ct, a[0].pipe_fd[0], 0))
-		return -1;
-	a[0].c = c;
-	a[0].op = op;
-	a[0].val = p;
-	a[1].op = canblock ? CHANEND : CHANNOBLK;
-	op_result = chan_alt(a, ct);
-	coroutine_ungreen(ct, a[0].pipe_fd[0]);
-	close(a[0].pipe_fd[0]);
-	close(a[0].pipe_fd[1]);
-	return op_result < 0 ? -1 : 0;
+
+  chan_peer->alt[0].op = op;
+  chan_peer->alt[0].val = p;
+  chan_peer->alt[1].op = canblock ? CHANEND : CHANNOBLK;
+  op_result = chan_alt(chan_peer->alt, chan_peer->ct);
+  return op_result < 0 ? -1 : 0;
 }
 
-int chan_sendul(channel_t *c, unsigned long *val, coroutine_t *ct)
+int chan_send(chan_peer_t *chan_peer, void *val)
 {
-	return chan_op(c, CHANSND, val, ct, 1);
+  return chan_op(chan_peer, CHANSND, val, 1);
 }
 
-int chan_recvul(channel_t *c, unsigned long *val, coroutine_t *ct)
+int chan_recv(chan_peer_t *chan_peer, void *val)
 {
-	return chan_op(c, CHANRCV, val, ct, 1);
+  return chan_op(chan_peer, CHANRCV, val, 1);
+}
+
+int chan_send_nb(chan_peer_t *chan_peer, void *val)
+{
+  return chan_op(chan_peer, CHANSND, val, 0);
+}
+
+int chan_recv_nb(chan_peer_t *chan_peer, void *val)
+{
+  return chan_op(chan_peer, CHANRCV, val, 0);
+}
+
+int chan_sendl(chan_peer_t *chan_peer, long val)
+{
+	return chan_op(chan_peer, CHANSND, &val, 1);
+}
+
+int chan_recvl(chan_peer_t *chan_peer, long *val)
+{
+	return chan_op(chan_peer, CHANRCV, val, 1);
 }

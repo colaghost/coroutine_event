@@ -10,6 +10,8 @@
 #define CHANNEL_INTERNAL_H
 #include <event.h>
 
+#include "channel.h"
+
 enum
 {
   CHANEND,
@@ -20,6 +22,7 @@ enum
 
 struct channel;
 struct Task;
+struct coroutine;
 
 typedef struct alt
 {
@@ -39,7 +42,7 @@ typedef struct alt_array
   unsigned int elem_count;
 }alt_array_t;
 
-typedef struct channel
+struct channel
 {
   unsigned int buf_size;
   unsigned int elem_size;
@@ -49,7 +52,11 @@ typedef struct channel
   alt_array_t asend;
   alt_array_t arecv;
   char *name;
-}channel_t;
+};
 
-
+struct chan_peer
+{
+  alt_t alt[2];
+  struct coroutine *ct;
+};
 #endif  /*CHANNEL_INTERNAL_H*/
