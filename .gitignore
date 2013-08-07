@@ -14,3 +14,4 @@ config.h
 config.log
 config.status
 *.out
+tags
