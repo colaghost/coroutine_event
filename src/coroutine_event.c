@@ -9,6 +9,8 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "coroutine_internal.h"
 #include "log.h"
@@ -129,12 +131,16 @@ int coroutine_green(coroutine_t *ct, int fd, int timeout)
 {
   struct event *ev = NULL;
   struct timeval tv = {0, 0};
+  int flags = 0;
   if (fd < 0)
     return -1;
   do
   {
     ev = (struct event*)malloc(sizeof(struct event));
     if (ev == NULL)
+      break;
+    flags = fcntl(fd, F_GETFL, 0);
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK))
       break;
     event_set(ev, fd, EV_READ | EV_PERSIST, coroutine_task_read_schedule, (void*)ct);
     event_base_set(ct->base->ev_base, ev);
