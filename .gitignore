@@ -7,10 +7,10 @@
 */.deps/
 */.libs/
 stamp-h1
-test
+test/test
 libtool
 Makefile
 config.h
 config.log
 config.status
-main
+*.out

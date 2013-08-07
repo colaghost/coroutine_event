@@ -55,14 +55,14 @@ int main()
     perror("alloc coroutine_base  failed");
     return -1;
   }
+  /*
   event_set(&ev, sock, EV_READ | EV_PERSIST, handle_accept, (void*)base);
   event_base_set(ev_base, &ev);
   event_add(&ev, NULL);
-  /*
+  */
 	coroutine_spawn_with_fd(sock, 0, accept_handler, base, NULL);
 
 	coroutine_spawn(process_request, base, NULL);
-  */
 
   event_base_loop(ev_base, 0);
 
@@ -78,8 +78,10 @@ static void request_handler(coroutine_t *ct, int fd, void *arg)
   int flags;
 	unsigned long val;
 
+#if 0
   flags = fcntl(fd, F_GETFL, 0);
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#endif
 
   while (1)
   {
@@ -87,7 +89,7 @@ static void request_handler(coroutine_t *ct, int fd, void *arg)
 		if (read_count <= 0)
     {
       if (errno == ETIMEDOUT)
-        dlog_debug("fd:%d timedout\n");
+        dlog_debug("fd:%d timedout\n", fd);
       dlog_debug("fd:%d close\n", fd);
       close(fd);
       return;
@@ -102,11 +104,15 @@ static void accept_handler(coroutine_t *ct, int fd, void *arg)
 	socklen_t addr_len;
 	int new_fd;
 	struct sockaddr_in cli_addr;
-	unsigned long val = 520;
+	long val = 520;
+  chan_peer_t *chan_peer;
 
+#if 0
   flags = fcntl(fd, F_GETFL, 0);
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#endif
 	addr_len = sizeof(cli_addr);
+  chan_peer = chan_peer_create(c, ct);
 	while (1)
 	{
 		new_fd = coroutine_accept(fd, (struct sockaddr*)&cli_addr, &addr_len, ct);
@@ -117,17 +123,19 @@ static void accept_handler(coroutine_t *ct, int fd, void *arg)
 			abort();
 		}
 		val = new_fd;
-		chan_sendul(c, &val, ct);
+		chan_sendl(chan_peer, val);
 	}
 }
 
 static void process_request(coroutine_t *ct, int fd, void *arg)
 {
-	unsigned long val;
+	long val;
 	int new_fd;
+  chan_peer_t *chan_peer;
+  chan_peer = chan_peer_create(c, ct);
 	while (1)
 	{
-		if (chan_recvul(c, &val, ct) == 0)
+		if (chan_recvl(chan_peer, &val) == 0)
 		{
 			new_fd = val;
 			//printf("new fd:%d\n", new_fd);
