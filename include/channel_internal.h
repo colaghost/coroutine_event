@@ -9,6 +9,7 @@
 #ifndef CHANNEL_INTERNAL_H
 #define CHANNEL_INTERNAL_H
 #include <event.h>
+#include <pthread.h>
 
 #include "channel.h"
 
@@ -44,6 +45,7 @@ typedef struct alt_array
 
 struct channel
 {
+  pthread_mutex_t mutex;
   unsigned int buf_size;
   unsigned int elem_size;
   unsigned char *buf;
