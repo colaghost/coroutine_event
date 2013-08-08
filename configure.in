@@ -38,6 +38,7 @@ AC_PROG_RANLIB
 AC_PROG_CC
 
 # Checks for libraries.
+AC_CHECK_LIB([pthread], [pthread_mutex_init])
 
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h stdlib.h string.h unistd.h])
