@@ -18,7 +18,7 @@
 
 struct coroutine_req
 {
-  coroutine_t *ct;
+  coroutine_t ct;
   coroutine_handler handler;
   int fd;
   void *arg;
@@ -52,17 +52,12 @@ int coroutine_spawn_with_fd(int fd, int timeout, coroutine_handler handler, stru
   if (fd < 0)
     return -1;
 
-  ct = (coroutine_t*)malloc(sizeof(coroutine_t));
-  if (ct == NULL)
+  req = (struct coroutine_req*)malloc(sizeof(struct coroutine_req));
+  if (req == NULL)
     return -1;
 
   do 
   {
-    req = (struct coroutine_req*)malloc(sizeof(struct coroutine_req));
-    if (req == NULL)
-      break;
-
-    req->ct = ct;
     req->handler = handler;
     req->fd = fd;
     req->arg = arg;
@@ -71,9 +66,9 @@ int coroutine_spawn_with_fd(int fd, int timeout, coroutine_handler handler, stru
     if (task == NULL)
       break;
 
-    coroutine_set(ct, base, task);
+    coroutine_set(&req->ct, base, task);
 
-    if (coroutine_green(ct, fd, timeout))
+    if (coroutine_green(&req->ct, fd, timeout))
       break;
 
     task_schedule(task);
@@ -81,8 +76,6 @@ int coroutine_spawn_with_fd(int fd, int timeout, coroutine_handler handler, stru
     return 0;
   } while (0);
 
-  if (ct)
-    free(ct);
   if (req)
     free(req);
   return -1;
@@ -94,17 +87,12 @@ int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base, void
   struct coroutine_req *req = NULL;
   Task *task = NULL;
 
-  ct = (coroutine_t*)malloc(sizeof(coroutine_t));
-  if (ct == NULL)
+  req = (struct coroutine_req*)malloc(sizeof(struct coroutine_req));
+  if (req == NULL)
     return -1;
 
   do 
   {
-    req = (struct coroutine_req*)malloc(sizeof(struct coroutine_req));
-    if (req == NULL)
-      break;
-
-    req->ct = ct;
     req->handler = handler;
     req->fd = -1;
     req->arg = arg;
@@ -113,15 +101,13 @@ int coroutine_spawn(coroutine_handler handler, struct coroutine_base *base, void
     if (task == NULL)
       break;
 
-    coroutine_set(ct, base, task);
+    coroutine_set(&req->ct, base, task);
 
     task_schedule(task);
 
     return 0;
   } while (0);
 
-  if (ct)
-    free(ct);
   if (req)
     free(req);
   return -1;
@@ -361,17 +347,15 @@ static void coroutine_task_write_schedule(int fd, short event, void *arg)
 static void coroutine_spawn_handler(Task *task, void *arg)
 {
   struct coroutine_req *req = (struct coroutine_req*)arg;
-  req->ct->task = task;
+  req->ct.task = task;
   if (req == NULL)
     return;
-  req->handler(req->ct, req->fd, req->arg);
+  req->handler(&req->ct, req->fd, req->arg);
 
   /* cleaner */
 	if (req->fd >= 0)
 	{
-		coroutine_ungreen(req->ct, req->fd);
-		close(req->fd);
+		coroutine_ungreen(&req->ct, req->fd);
 	}
-  free(req->ct);
   free(req);
 }

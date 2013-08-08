@@ -23,6 +23,7 @@ channel_t* channel_create(int elem_size, int buf_size)
   if (c)
   {
     memset(c, 0, sizeof(*c));
+    pthread_mutex_init(&(c->mutex), NULL);
     c->buf_size = buf_size;
     c->elem_size = elem_size;
     c->nbuf = 0;
@@ -133,7 +134,6 @@ static int alt_can_exec(alt_t *a)
   if (c->buf_size == 0)
   {
     ar = chan_get_array(c, OTHER_OP(a->op));
-		dlog_debug("%s:%d\n", __func__, ar && ar->elem_count);
     return ar && ar->elem_count;
   }
   else
@@ -247,7 +247,7 @@ static void alt_signal(alt_t *a)
 	write(a->pipe_fd[1], "o", 1);
 }
 
-static void alt_exec(alt_t *a)
+static int alt_exec(alt_t *a)
 {
 	int i;
 	alt_array_t *ar;
@@ -255,6 +255,8 @@ static void alt_exec(alt_t *a)
 	channel_t *c;
 
 	c = a->c;
+  if (!alt_can_exec(a))
+    return 0;
 	ar = chan_get_array(c, OTHER_OP(a->op));
 	if (ar && ar->elem_count)
 	{
@@ -267,14 +269,18 @@ static void alt_exec(alt_t *a)
 	}
 	else
 		alt_copy(a, NULL);
+  return 1;
 }
 
-int chan_alt(alt_t *a, coroutine_t *ct)
+static int chan_alt_lock(alt_t *a, coroutine_t *ct)
 {
-	int loop, rand_index, ncan, stop_index, canblock;
+	int loop, ncan, stop_index, canblock;
 	ssize_t read_bytes;
 	char c;
+  channel_t *chan;
+  int exec_result = -1024;
 
+  chan = a->c;
 	for (loop = 0; 
 			 a[loop].op != CHANEND && a[loop].op != CHANNOBLK;
 			 ++loop);
@@ -287,6 +293,7 @@ int chan_alt(alt_t *a, coroutine_t *ct)
 		a[loop].xalt = a;
 	}
 
+  /*
 	ncan = 0;
 	for (loop = 0; loop < stop_index; ++loop)
 	{
@@ -295,27 +302,48 @@ int chan_alt(alt_t *a, coroutine_t *ct)
 	}
 	if (ncan)
 	{
-		rand_index = rand() % ncan;
 		for (loop = 0; loop < stop_index; ++loop)
 		{
 			if (alt_can_exec(&a[loop]))
 			{
-				if (rand_index-- == 0)
-				{
 					alt_exec(&a[loop]);
 					return loop;
-				}
 			}
 		}
 	}
-	if (!canblock)
-		return -1;
+  */
+  pthread_mutex_lock(&(chan->mutex));
+  do
+  {
+    for (loop = 0; loop < stop_index; ++loop)
+    {
+      if (alt_exec(&a[loop]))
+      {
+        exec_result = loop;
+        break;
+      }
+    }
+    if (exec_result > -1024)
+      break;
 
-	for (loop = 0; loop < stop_index; ++loop)
-	{
-		alt_queue(&a[loop]);
-	}
+	  if (!canblock)
+    {
+      exec_result = -1;
+      break;
+    }
 
+	  for (loop = 0; loop < stop_index; ++loop)
+	  {
+	  	alt_queue(&a[loop]);
+	  }
+  } while (0);
+
+  pthread_mutex_unlock(&(chan->mutex));
+
+  if (exec_result > -1024)
+    return exec_result;
+
+  dlog_debug("I maybe block\n");
 	read_bytes = coroutine_read(a[0].pipe_fd[0], &c, 1, ct);
 	if (read_bytes < 1)
 		return -1;
@@ -330,7 +358,7 @@ static int chan_op(chan_peer_t *chan_peer, int op, void *p, int canblock)
   chan_peer->alt[0].op = op;
   chan_peer->alt[0].val = p;
   chan_peer->alt[1].op = canblock ? CHANEND : CHANNOBLK;
-  op_result = chan_alt(chan_peer->alt, chan_peer->ct);
+  op_result = chan_alt_lock(chan_peer->alt, chan_peer->ct);
   return op_result < 0 ? -1 : 0;
 }
 
